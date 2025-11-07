@@ -54,8 +54,14 @@ class AlwaysOnService : Service() {
             .setContentTitle("Message Mirror running")
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .build()
-        startForeground(1, notif)
-        LogStore.append(this, "AlwaysOnService startForeground")
+        try {
+            startForeground(1, notif)
+            LogStore.append(this, "AlwaysOnService startForeground")
+        } catch (e: SecurityException) {
+            LogStore.append(this, "AlwaysOnService startForeground failed: SecurityException: ${e.message}")
+        } catch (e: Exception) {
+            LogStore.append(this, "AlwaysOnService startForeground failed: ${e.javaClass.simpleName}: ${e.message}")
+        }
     }
 
     private fun initFlutterEngine() {
