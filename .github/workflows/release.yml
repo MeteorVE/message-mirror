@@ -26,13 +26,49 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          # Pinned: newer Flutter (3.50+) requires Gradle 9.3+, while this
+          # project uses AGP 8.9.1 / Gradle 8.12 (Dart ^3.9 = Flutter 3.35).
+          flutter-version: '3.35.7'
           cache: true
 
       - name: Flutter pub get
         run: flutter pub get
 
+      - name: Decode release keystore
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_KEYSTORE_BASE64}" ]]; then
+            echo "::error::RELEASE_KEYSTORE_BASE64 secret is missing; refusing to build a debug-signed release."
+            exit 1
+          fi
+          echo "${RELEASE_KEYSTORE_BASE64}" | base64 -d > "${RUNNER_TEMP}/release.p12"
+          echo "RELEASE_STORE_FILE=${RUNNER_TEMP}/release.p12" >> "${GITHUB_ENV}"
+
       - name: Build split-per-ABI APKs (release)
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: flutter build apk --release --split-per-abi -t lib/main.dart
+
+      - name: Verify APK signature is not the debug key
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(ls -d "${ANDROID_HOME}"/build-tools/*/ | sort -V | tail -1)apksigner"
+          for apk in build/app/outputs/flutter-apk/app-*-release.apk; do
+            echo "== ${apk}"
+            CERTS="$("${APKSIGNER}" verify --print-certs "${apk}")"
+            echo "${CERTS}" | grep -E "DN:|SHA-256"
+            if echo "${CERTS}" | grep -q "CN=Android Debug"; then
+              echo "::error::${apk} is signed with the debug key."
+              exit 1
+            fi
+          done
+          rm -f "${RUNNER_TEMP}/release.p12"
 
       - name: Rename APKs with version and ABI
         shell: bash
