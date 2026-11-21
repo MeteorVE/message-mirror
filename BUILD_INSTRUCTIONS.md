@@ -36,6 +36,28 @@
    # Output: build/app/outputs/flutter-apk/app-release.apk
    ```
 
+## Release Signing
+
+Release APKs are signed with a fixed key so new versions install over the old
+one (keeping settings and granted permissions). With the debug key, every CI
+runner generates a different key, so each update requires an uninstall.
+
+- **CI**: reads repository secrets `RELEASE_KEYSTORE_BASE64` (base64 of the
+  PKCS12 keystore), `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`,
+  `RELEASE_KEY_PASSWORD`. The workflow fails if the keystore secret is missing
+  or if any APK ends up signed with the debug key.
+- **Local**: create `android/key.properties` (git-ignored):
+  ```properties
+  storeFile=C:/path/to/release.p12
+  storePassword=...
+  keyAlias=release
+  keyPassword=...
+  ```
+  Without it, local release builds fall back to the debug key.
+
+Keep a backup of the keystore and its password outside the repo. Losing it
+means the next update must be installed after an uninstall.
+
 ## Building via GitHub Actions
 
 The repository has an automated build workflow that you can trigger:
