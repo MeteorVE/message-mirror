@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java (JDK)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.35.7'
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Flutter tests
+        run: flutter test
+
+      # flutter build injects android/gradlew (not committed) and generates plugin registrants
+      - name: Prepare Android build
+        run: flutter build apk --debug --target-platform android-arm64 -t lib/main.dart
+
+      - name: Android unit tests (Robolectric)
+        working-directory: android
+        run: ./gradlew :app:testDebugUnitTest --no-daemon

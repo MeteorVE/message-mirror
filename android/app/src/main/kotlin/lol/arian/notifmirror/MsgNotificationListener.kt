@@ -85,7 +85,12 @@ class MsgNotificationListener : NotificationListenerService() {
             return
         }
         try { LogStore.append(this, "emit onNotification: title='$title' textLen=${textResolved.length}") } catch (_: Exception) {}
+        // Stable per-post id shared by every delivery path (broadcast, channel, native fallback),
+        // so the server can drop duplicates of the same notification.
+        val notifId = "${sbn.key}|${sbn.postTime}"
+        val isGroupSummary = (n.flags and 0x00000200) != 0
         val intent = Intent(ACTION).apply {
+            putExtra("id", notifId)
             putExtra("app", app)
             putExtra("title", title)
             putExtra("text", textResolved)
@@ -111,6 +116,7 @@ class MsgNotificationListener : NotificationListenerService() {
 
         // Also deliver directly via channel if available
         val payload: Map<String, Any?> = mapOf(
+            "id" to notifId,
             "app" to app,
             "title" to title,
             "text" to textResolved,
@@ -135,10 +141,10 @@ class MsgNotificationListener : NotificationListenerService() {
         val ch = channel
         if (ch != null) {
             ch.invokeMethod("onNotification", payload)
-        } else {
-            synchronized(pendingEvents) { pendingEvents.add(payload) }
-            // As a final fallback, send with native HTTP to avoid losing events
-            ApiSender.send(this, title, textResolved, sbn.postTime)
+        } else if (!isGroupSummary) {
+            // Final fallback: send natively with the full field set. Not queued for a later
+            // replay through Flutter, which used to send the same notification a second time.
+            ApiSender.sendNotification(this, payload)
         }
     }
 

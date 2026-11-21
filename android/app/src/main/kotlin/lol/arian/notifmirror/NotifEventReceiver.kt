@@ -10,6 +10,7 @@ class NotifEventReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != MsgNotificationListener.ACTION) return
         val data = mapOf(
+            "id" to (intent.getStringExtra("id") ?: ""),
             "app" to (intent.getStringExtra("app") ?: ""),
             "title" to (intent.getStringExtra("title") ?: ""),
             "text" to (intent.getStringExtra("text") ?: ""),

@@ -13,53 +13,74 @@ import java.util.Locale
 
 object ApiSender {
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+    private val leftoverPlaceholder = Regex("\\{\\{\\w+\\}\\}")
 
     fun send(context: Context, from: String, body: String, whenMs: Long) {
+        sendNotification(context, mapOf("title" to from, "text" to body, "when" to whenMs))
+    }
+
+    /**
+     * Native fallback used when the Flutter engine is not attached.
+     * Renders the same template variables as the Dart side (app, subText, largeIcon, id, ...),
+     * so payloads look identical no matter which path sent them.
+     */
+    fun sendNotification(context: Context, fields: Map<String, Any?>) {
         val prefs = context.getSharedPreferences("msg_mirror", Context.MODE_PRIVATE)
         val endpoint = prefs.getString("endpoint", "") ?: ""
         val template = prefs.getString("payload_template", "") ?: ""
+        val title = fields["title"]?.toString() ?: ""
+        val text = fields["text"]?.toString()?.trim() ?: ""
+        val body = if (text.isNotEmpty()) text else title
         if (endpoint.isEmpty() || body.isEmpty()) {
             try { LogStore.append(context, "ApiSender skip: endpoint/body empty") } catch (_: Exception) {}
             return
         }
+        val whenMs = (fields["when"] as? Number)?.toLong() ?: 0L
         val dateStr = dateFormat.format(Date(if (whenMs > 0) whenMs else System.currentTimeMillis()))
-        val payload = try {
-            if (template.isNotBlank()) {
-                val rendered = template
-                    .replace("{{body}}", escape(body))
-                    .replace("{{from}}", escape(from))
-                    .replace("{{date}}", escape(dateStr))
-                    .replace("{{app}}", escape("notification"))
-                    .replace("{{type}}", escape("notification"))
-                    .replace("{{reception}}", escape(prefs.getString("reception", "") ?: ""))
-                JSONObject(rendered)
-            } else {
-                JSONObject()
-                    .put("message_body", body)
-                    .put("message_from", from)
-                    .put("message_date", dateStr)
-                    .put("type", "notification")
-            }
+        val values = LinkedHashMap<String, String>()
+        for ((k, v) in fields) values[k] = v?.toString() ?: ""
+        values["body"] = body
+        values["from"] = title
+        values["date"] = dateStr
+        values["app"] = fields["app"]?.toString()?.takeIf { it.isNotEmpty() } ?: "notification"
+        values["type"] = "notification"
+        values["reception"] = prefs.getString("reception", "") ?: ""
+        val payload = renderPayload(template, values)
+        post(context, endpoint, payload, title, body.length)
+    }
+
+    /** Fills {{key}} placeholders with JSON-escaped values; unknown placeholders become "". */
+    internal fun renderPayload(template: String, values: Map<String, String>): JSONObject {
+        val fallback = JSONObject()
+            .put("message_body", values["body"] ?: "")
+            .put("message_from", values["from"] ?: "")
+            .put("message_date", values["date"] ?: "")
+            .put("type", values["type"] ?: "notification")
+        if (template.isBlank()) return fallback
+        return try {
+            var rendered = template
+            for ((k, v) in values) rendered = rendered.replace("{{$k}}", escape(v))
+            rendered = leftoverPlaceholder.replace(rendered, "")
+            JSONObject(rendered)
         } catch (e: Exception) {
-            JSONObject()
-                .put("message_body", body)
-                .put("message_from", from)
-                .put("message_date", dateStr)
-                .put("type", "notification")
+            fallback
         }
+    }
+
+    private fun post(context: Context, endpoint: String, payload: JSONObject, from: String, bodyLen: Int) {
 
         Thread {
             try {
-                LogStore.append(context, "ApiSender POST → $endpoint from='$from' len=${body.length}")
+                LogStore.append(context, "ApiSender POST → $endpoint from='$from' len=$bodyLen")
                 val url = URL(endpoint)
                 val conn = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
                     connectTimeout = 10000
                     readTimeout = 15000
                     doOutput = true
-                    setRequestProperty("Content-Type", "application/json")
+                    setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 }
-                OutputStreamWriter(conn.outputStream).use { it.write(payload.toString()) }
+                OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(payload.toString()) }
                 val code = conn.responseCode
                 val resp = try {
                     BufferedReader(conn.inputStream.reader()).use { br ->
@@ -79,7 +100,11 @@ object ApiSender {
         }.start()
     }
 
-    private fun escape(v: String): String = v
+    /** JSON string escaping without the surrounding quotes (templates already quote "{{x}}"). */
+    internal fun escape(v: String): String {
+        val quoted = JSONObject.quote(v)
+        return quoted.substring(1, quoted.length - 1)
+    }
 }
 
 

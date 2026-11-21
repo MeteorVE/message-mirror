@@ -71,6 +71,7 @@ Payload notes:
 - `reception` is included when configured in settings.
 - The payload template supports placeholders: `{{body}}`, `{{from}}`, `{{date}}`, `{{app}}`, `{{type}}`, `{{reception}}`.
 - Additional notification fields are captured and can be used in templates (if present on the device/notification): `{{title}}`, `{{text}}`, `{{when}}`, `{{isGroupSummary}}`, `{{subText}}`, `{{summaryText}}`, `{{bigText}}`, `{{infoText}}`, `{{people}}`, `{{category}}`, `{{priority}}`, `{{channelId}}`, `{{actions}}`, `{{groupKey}}`, `{{visibility}}`, `{{color}}`, `{{badgeIconType}}`, `{{largeIcon}}` (base64 PNG), `{{picture}}` (base64 PNG).
+- `{{id}}` is a stable per-notification id (`<sbn.key>|<postTime>`), identical across all delivery paths, so the receiver can drop duplicates. The native fallback sender (used when the Flutter engine is not attached) renders the same variables as the Dart side; unknown placeholders render as empty strings.
 
 ## Dart Files (Key)
 

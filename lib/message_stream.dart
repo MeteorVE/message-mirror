@@ -108,6 +108,7 @@ class MessageStream {
     final String text = (m['text'] ?? '').toString().trim();
     final bool isGroupSummary = (m['isGroupSummary'] ?? false) == true;
     final int whenMs = (m['when'] is int) ? (m['when'] as int) : 0;
+    final String notifId = (m['id'] ?? '').toString();
     final String subText = (m['subText'] ?? '').toString();
     final String summaryText = (m['summaryText'] ?? '').toString();
     final String bigText = (m['bigText'] ?? '').toString();
@@ -154,6 +155,7 @@ class MessageStream {
     }
     final dateStr = _formatDate(DateTime.fromMillisecondsSinceEpoch(whenMs == 0 ? DateTime.now().millisecondsSinceEpoch : whenMs));
     final extraValues = <String, String>{
+      'id': notifId,
       'title': title,
       'text': text,
       'when': whenMs.toString(),
